@@ -123,6 +123,66 @@ func main() {
 	}
 }
 
+func IsBroken(s string, args ...interface{}) bool {
+	threshold := 0.25
+	for _, arg := range args {
+		switch t := arg.(type) {
+		case float64:
+			threshold = t
+		default:
+			panic("Unknown argument")
+		}
+	}
+	if len(s) == 0 {
+		return false
+	}
+
+	var (
+		totalLetters   float64
+		latinExtCount  float64 // Range 0x00C0–0x00FF (Accented Latin characters used in byte-reinterpretation)
+		replacementCnt float64 // \uFFFD (Unicode replacement character)
+		controlCharCnt float64 // Unprintable control characters from raw byte mismatches
+	)
+
+	for _, r := range s {
+		// Check for Unicode replacement character (frequent in failed UTF-8 decodes)
+		if r == unicode.ReplacementChar {
+			replacementCnt++
+			continue
+		}
+
+		if unicode.IsControl(r) && r != '\n' && r != '\r' && r != '\t' {
+			controlCharCnt++
+			continue
+		}
+
+		if unicode.IsLetter(r) {
+			totalLetters++
+
+			// Detect High-ASCII Latin-1 Supplement Range (192-255 / 0xC0-0xFF)
+			// This range contains letters like Í, à, ñ, ð, which appear when
+			// single-byte Cyrillic/Greek/Arabic/Hebrew bytes are read as Windows-1252/Latin-1.
+			if r >= 0x00C0 && r <= 0x00FF {
+				latinExtCount++
+			}
+		}
+	}
+
+	// 1. Instant trigger: Contains replacement characters or non-standard control codes
+	if replacementCnt > 0 || controlCharCnt > 0 {
+		return true
+	}
+
+	if totalLetters == 0 {
+		return false
+	}
+
+	// 2. High density of extended Latin characters (>25% of letters in string)
+	// Normal European text rarely exceeds 5–10% accented letters unless highly artificial.
+	latinExtRatio := latinExtCount / totalLetters
+	return latinExtRatio > threshold
+}
+
 // UniversalFix attempts single-pass, multi-byte, and double-pass recoveries.
 func UniversalFix(input string) (RepairResult, bool) {
 	detector := chardet.NewTextDetector()
