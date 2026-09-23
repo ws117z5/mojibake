@@ -1,4 +1,4 @@
-module mojibake
+module github.com/ws117z5/mojibake
 
 go 1.27.1
 
